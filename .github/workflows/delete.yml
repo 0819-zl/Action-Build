@@ -7,9 +7,9 @@ on:
         type: choice
         description: '清理的工作流名称'
         required: true
-        default: 'Build OnePlus_SukiSU Ultra All'
+        default: 'Build OnePlus_KernelSU Next All'
         options:
-          - Build OnePlus_SukiSU Ultra All
+          - Build OnePlus_KernelSU Next All
           - CAll Build Start UP
           - Build TEST
           - Build TEST2
