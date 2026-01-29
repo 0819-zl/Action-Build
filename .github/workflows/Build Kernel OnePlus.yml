@@ -60,7 +60,6 @@ on:
         options:
           - OFFICIAL
           - SPOOF
-          - MIUIX
       SUSFS_CI:
         type: choice
         description: "SUSFS模块下载调用方向"
