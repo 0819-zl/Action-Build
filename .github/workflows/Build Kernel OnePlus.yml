@@ -557,12 +557,32 @@ jobs:
           git add -A
           git commit -m "Random suffix & remove -dirty"
 
+      - name: Resolve Manager Source
+        id: manager
+        run: |
+          MANAGER_SOURCE="${{ github.event.inputs.MANAGER_SOURCE }}"
+
+          case "$MANAGER_SOURCE" in
+            SPOOF)
+              BRANCH="dev"
+              ARTIFACT="manager-spoofed"
+              ;;
+            OFFICIAL|*)
+              BRANCH="dev"
+              ARTIFACT="manager"
+              ;;
+          esac
+
+          echo "manager_branch=$BRANCH" >> "$GITHUB_OUTPUT"
+          echo "manager_artifact=$ARTIFACT" >> "$GITHUB_OUTPUT"
+
       - name: Add KernelSU Next
         run: |
           cd kernel_workspace/kernel_platform
-          curl -LSs "https://raw.githubusercontent.com/KernelSU-Next/KernelSU-Next/refs/heads/dev/kernel/setup.sh" | bash -s dev_susfs
+          MANAGER_BRANCH="${{ steps.manager.outputs.manager_branch }}"
+          curl -LSs "https://raw.githubusercontent.com/KernelSU-Next/KernelSU-Next/refs/heads/${MANAGER_BRANCH}/kernel/setup.sh" | bash -s dev_susfs
           cd KernelSU-Next
-          KSU_VERSION=$(expr $(curl -sI "https://api.github.com/repos/KernelSU-Next/KernelSU-Next/commits?sha=dev&per_page=1" | grep -i "link:" | sed -n 's/.*page=\([0-9]*\)>; rel="last".*/\1/p') "+" 30000)
+          KSU_VERSION=$(expr $(curl -sI "https://api.github.com/repos/KernelSU-Next/KernelSU-Next/commits?sha=${MANAGER_BRANCH}&per_page=1" | grep -i "link:" | sed -n 's/.*page=\([0-9]*\)>; rel="last".*/\1/p') "+" 30000)
           echo "KSUVER=$KSU_VERSION" >> $GITHUB_ENV
           sed -i "s/KSU_VERSION_FALLBACK := 1/KSU_VERSION_FALLBACK := $KSU_VERSION/g" kernel/Kbuild
           KSU_GIT_TAG=$(curl -sL "https://api.github.com/repos/KernelSU-Next/KernelSU-Next/tags" | grep -o '"name": *"[^"]*"' | head -n 1 | sed 's/"name": "//;s/"//')
@@ -1037,38 +1057,27 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          MANAGER_SOURCE="${{ github.event.inputs.MANAGER_SOURCE }}"
-          case "$MANAGER_SOURCE" in
-            SPOOF)
-              BRANCH="dev"
-              ARTIFACT_NAME="manager-spoofed"
-              ;;
-            OFFICIAL|*)
-              BRANCH="dev"
-              ARTIFACT_NAME="manager"
-              ;;
-          esac
-          echo "Using branch: $BRANCH"
-          echo "Downloading artifact: $ARTIFACT_NAME"
-          run_id=$(gh api \
-            "repos/KernelSU-Next/KernelSU-Next/actions/workflows/build-manager-ci.yml/runs?branch=$BRANCH&status=success&per_page=1" \
-            --jq '.workflow_runs[0].id' || echo "")
+          MANAGER_BRANCH="${{ steps.manager.outputs.manager_branch }}"
+          MANAGER_ARTIFACT="${{ steps.manager.outputs.manager_artifact }}"
+
+          echo "Using branch: $MANAGER_BRANCH"
+          echo "Downloading artifact: $MANAGER_ARTIFACT"
+
+          run_id=$(gh api "repos/KernelSU-Next/KernelSU-Next/actions/workflows/build-manager.yml/runs?branch=$MANAGER_BRANCH&status=success&per_page=1" --jq '.workflow_runs[0].id' || echo "")
 
           if [[ -z "$run_id" ]]; then
-            echo "No successful workflow run found on branch $BRANCH. Skipping download."
+            echo "No successful workflow run found on branch $MANAGER_BRANCH. Skipping download."
             exit 0
           fi
-          artifact_url=$(gh api \
-            "repos/KernelSU-Next/KernelSU-Next/actions/runs/$run_id/artifacts" | \
-            jq -r ".artifacts[] | select(.name == \"$ARTIFACT_NAME\") | .archive_download_url" | head -n1)
+          artifact_url=$(gh api "repos/KernelSU-Next/KernelSU-Next/actions/runs/$run_id/artifacts" | jq -r ".artifacts[] | select(.name == \"$MANAGER_ARTIFACT\") | .archive_download_url" | head -n1)
 
           if [[ -z "$artifact_url" ]]; then
-            echo "No artifact '$ARTIFACT_NAME' found in run $run_id. Skipping download."
+            echo "No artifact '$MANAGER_ARTIFACT' found in run $run_id. Skipping download."
             exit 0
           fi
           echo "Downloading from: $artifact_url"
-          curl -fL -H "Authorization: token $GITHUB_TOKEN" -o "${ARTIFACT_NAME}.zip" "$artifact_url"
-          unzip -j "${ARTIFACT_NAME}.zip" "*.apk" -d ./AnyKernel3/
+          curl -fL -H "Authorization: token $GITHUB_TOKEN" -o "${MANAGER_ARTIFACT}.zip" "$artifact_url"
+          unzip -j "${MANAGER_ARTIFACT}.zip" "*.apk" -d ./AnyKernel3/
 
       - name: Set zip Suffix
         id: suffix
